@@ -1,6 +1,134 @@
 # Domains routed through awg0.
-# Add one domain per line.
-# Subdomains are handled by dnsmasq; wildcard entries are not required.
+# One domain per line. Comments and blank lines are allowed.
 
-# Routing test
-ifconfig.me
+# --- Messaging / social ---
+
+# WhatsApp
+whatsapp.com
+whatsapp.net
+wa.me
+
+# Telegram
+telegram.org
+t.me
+telegram.me
+telegra.ph
+telesco.pe
+
+# Instagram
+instagram.com
+cdninstagram.com
+
+# Facebook / Messenger
+facebook.com
+fb.com
+fbcdn.net
+fbsbx.com
+messenger.com
+m.me
+
+# Threads
+threads.net
+threads.com
+
+# X / Twitter
+x.com
+twitter.com
+t.co
+twimg.com
+
+# Discord
+discord.com
+discord.gg
+discordapp.com
+discordapp.net
+discordcdn.com
+discord.media
+
+# Signal
+signal.org
+signal.me
+signal.group
+whispersystems.org
+
+# Viber
+viber.com
+viber.me
+vb.me
+
+# Bluesky
+bsky.app
+bsky.social
+
+# LinkedIn
+linkedin.com
+licdn.com
+lnkd.in
+
+# --- Video / media ---
+
+# YouTube
+youtube.com
+youtu.be
+googlevideo.com
+ytimg.com
+youtube-nocookie.com
+youtubei.googleapis.com
+youtube.googleapis.com
+ggpht.com
+
+# Twitch
+twitch.tv
+ttvnw.net
+jtvnw.net
+twitchcdn.net
+
+# TikTok
+tiktok.com
+tiktokcdn.com
+tiktokv.com
+byteoversea.com
+
+# Spotify
+spotify.com
+scdn.co
+spotifycdn.com
+
+# --- AI services ---
+
+# ChatGPT / OpenAI
+chatgpt.com
+openai.com
+oaistatic.com
+oaiusercontent.com
+
+# Claude
+claude.ai
+anthropic.com
+
+# --- Torrent trackers ---
+
+# NNM-Club
+nnmclub.to
+nnm-club.cc
+nnm-club.me
+nnm-club.ws
+nnm-club.lib
+nnmstatic.win
+
+# RuTracker
+rutracker.org
+t-ru.org
+
+# Rutor
+rutor.info
+rutor.is
+rutor.lib
+
+# Kinozal
+kinozal.tv
+kinozal.me
+kinozal.guru
+
+# Tapochek
+tapochek.net
