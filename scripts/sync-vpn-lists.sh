@@ -9,6 +9,8 @@ DOMAIN_DEST="$DIR/vpn-domains.txt"
 NETWORK_DEST="$DIR/vpn-networks.txt"
 TARGET_INTERFACE='awg0'
 TARGET_NFTSET_4="pbr_${TARGET_INTERFACE}_4_dst_ip_user"
+NETWORK_POLICY='openwrt_lists_networks'
+NETWORK_TEST_POLICY='openwrt_lists_network_test'
 PBR_LOG='/tmp/openwrt-lists-pbr.log'
 MIN_PREFIX=12
 
@@ -18,10 +20,11 @@ DOMAIN_NEW="$(mktemp /tmp/openwrt-lists-domains.new.XXXXXX)"
 NETWORK_NEW="$(mktemp /tmp/openwrt-lists-networks.new.XXXXXX)"
 DOMAIN_OLD="$(mktemp /tmp/openwrt-lists-domains.old.XXXXXX)"
 NETWORK_OLD="$(mktemp /tmp/openwrt-lists-networks.old.XXXXXX)"
+PBR_OLD="$(mktemp /tmp/openwrt-lists-pbr.old.XXXXXX)"
 
 cleanup() {
     rm -f "$DOMAIN_RAW" "$NETWORK_RAW" "$DOMAIN_NEW" "$NETWORK_NEW" \
-        "$DOMAIN_OLD" "$NETWORK_OLD"
+        "$DOMAIN_OLD" "$NETWORK_OLD" "$PBR_OLD"
 }
 trap cleanup EXIT INT TERM
 
@@ -36,6 +39,24 @@ fetch() {
     curl -fsSL --proto '=https' --tlsv1.2 \
         --connect-timeout 15 --max-time 60 --retry 2 \
         "$url" -o "$out"
+}
+
+restore_state() {
+    if [ "$DOMAIN_HAD_OLD" -eq 1 ]; then
+        cp -f "$DOMAIN_OLD" "$DOMAIN_DEST"
+    else
+        rm -f "$DOMAIN_DEST"
+    fi
+
+    if [ "$NETWORK_HAD_OLD" -eq 1 ]; then
+        cp -f "$NETWORK_OLD" "$NETWORK_DEST"
+    else
+        rm -f "$NETWORK_DEST"
+    fi
+
+    cp -f "$PBR_OLD" /etc/config/pbr
+    nft flush set inet fw4 "$TARGET_NFTSET_4" >/dev/null 2>&1 || true
+    /etc/init.d/pbr reload >/dev/null 2>&1 || true
 }
 
 mkdir -p "$DIR"
@@ -128,6 +149,7 @@ END { if (bad) exit 1 }
 
 DOMAIN_COUNT="$(wc -l < "$DOMAIN_NEW" | tr -d ' ')"
 NETWORK_COUNT="$(wc -l < "$NETWORK_NEW" | tr -d ' ')"
+NETWORK_DEST_ADDR="$(tr '\n' ' ' < "$NETWORK_NEW" | sed 's/[[:space:]]*$//')"
 
 if [ "$DOMAIN_COUNT" -gt 5000 ]; then
     log "ERROR: domain count is unexpectedly high ($DOMAIN_COUNT); nothing changed"
@@ -147,11 +169,34 @@ if [ "${DRY_RUN:-0}" = '1' ]; then
 fi
 
 DOMAIN_CHANGED=1
-NETWORK_CHANGED=1
-[ -f "$DOMAIN_DEST" ] && cmp -s "$DOMAIN_NEW" "$DOMAIN_DEST" && DOMAIN_CHANGED=0
-[ -f "$NETWORK_DEST" ] && cmp -s "$NETWORK_NEW" "$NETWORK_DEST" && NETWORK_CHANGED=0
+NETWORK_FILE_CHANGED=1
+POLICY_CHANGED=0
 
-if [ "$DOMAIN_CHANGED" -eq 0 ] && [ "$NETWORK_CHANGED" -eq 0 ]; then
+[ -f "$DOMAIN_DEST" ] && cmp -s "$DOMAIN_NEW" "$DOMAIN_DEST" && DOMAIN_CHANGED=0
+[ -f "$NETWORK_DEST" ] && cmp -s "$NETWORK_NEW" "$NETWORK_DEST" && NETWORK_FILE_CHANGED=0
+
+CURRENT_POLICY_TYPE="$(uci -q get pbr.$NETWORK_POLICY 2>/dev/null || true)"
+CURRENT_POLICY_INTERFACE="$(uci -q get pbr.$NETWORK_POLICY.interface 2>/dev/null || true)"
+CURRENT_POLICY_DEST="$(uci -q get pbr.$NETWORK_POLICY.dest_addr 2>/dev/null || true)"
+CURRENT_POLICY_ENABLED="$(uci -q get pbr.$NETWORK_POLICY.enabled 2>/dev/null || true)"
+
+if [ "$NETWORK_COUNT" -gt 0 ]; then
+    [ "$CURRENT_POLICY_TYPE" = 'policy' ] || POLICY_CHANGED=1
+    [ "$CURRENT_POLICY_INTERFACE" = "$TARGET_INTERFACE" ] || POLICY_CHANGED=1
+    [ "$CURRENT_POLICY_DEST" = "$NETWORK_DEST_ADDR" ] || POLICY_CHANGED=1
+    [ "$CURRENT_POLICY_ENABLED" = '1' ] || POLICY_CHANGED=1
+else
+    [ -z "$CURRENT_POLICY_TYPE" ] || POLICY_CHANGED=1
+fi
+
+# Remove the one-off diagnostic policy created during migration.
+if uci -q get pbr.$NETWORK_TEST_POLICY >/dev/null 2>&1; then
+    POLICY_CHANGED=1
+fi
+
+if [ "$DOMAIN_CHANGED" -eq 0 ] &&
+   [ "$NETWORK_FILE_CHANGED" -eq 0 ] &&
+   [ "$POLICY_CHANGED" -eq 0 ]; then
     log "No changes ($DOMAIN_COUNT domains, $NETWORK_COUNT IPv4 networks)"
     exit 0
 fi
@@ -166,6 +211,7 @@ if [ -f "$NETWORK_DEST" ]; then
     cp -f "$NETWORK_DEST" "$NETWORK_OLD"
     NETWORK_HAD_OLD=1
 fi
+cp -f /etc/config/pbr "$PBR_OLD"
 
 cp -f "$DOMAIN_NEW" "$DOMAIN_DEST.new"
 cp -f "$NETWORK_NEW" "$NETWORK_DEST.new"
@@ -173,33 +219,48 @@ chmod 0644 "$DOMAIN_DEST.new" "$NETWORK_DEST.new"
 mv -f "$DOMAIN_DEST.new" "$DOMAIN_DEST"
 mv -f "$NETWORK_DEST.new" "$NETWORK_DEST"
 
-# Remove stale IPs learned from domains that are no longer present.
-# PBR reload may preserve the existing user nft set on some installations.
+uci -q delete pbr.$NETWORK_TEST_POLICY
+
+if [ "$NETWORK_COUNT" -gt 0 ]; then
+    uci set pbr.$NETWORK_POLICY='policy'
+    uci set pbr.$NETWORK_POLICY.name='OpenWrt Lists Networks'
+    uci set pbr.$NETWORK_POLICY.interface="$TARGET_INTERFACE"
+    uci set pbr.$NETWORK_POLICY.dest_addr="$NETWORK_DEST_ADDR"
+    uci set pbr.$NETWORK_POLICY.enabled='1'
+else
+    uci -q delete pbr.$NETWORK_POLICY
+fi
+
+uci commit pbr
+
+# Domain IPs are learned dynamically by dnsmasq. Flush the user set so removed
+# domains cannot leave stale addresses behind.
 if nft list set inet fw4 "$TARGET_NFTSET_4" >/dev/null 2>&1; then
     nft flush set inet fw4 "$TARGET_NFTSET_4" >/dev/null 2>&1 || {
-        log 'ERROR: cannot flush AWG user nft set; restoring previous lists'
-        if [ "$DOMAIN_HAD_OLD" -eq 1 ]; then
-            cp -f "$DOMAIN_OLD" "$DOMAIN_DEST"
-        else
-            rm -f "$DOMAIN_DEST"
-        fi
-        if [ "$NETWORK_HAD_OLD" -eq 1 ]; then
-            cp -f "$NETWORK_OLD" "$NETWORK_DEST"
-        else
-            rm -f "$NETWORK_DEST"
-        fi
+        log 'ERROR: cannot flush AWG user nft set; rolling back'
+        restore_state
         exit 1
     }
 fi
 
-(/etc/init.d/pbr reload >"$PBR_LOG" 2>&1 || true)
+if ! /etc/init.d/pbr reload >"$PBR_LOG" 2>&1; then
+    log 'ERROR: PBR reload failed; rolling back'
+    restore_state
+    exit 1
+fi
 sleep 2
 
 VALID=1
 /etc/init.d/pbr running >/dev/null 2>&1 || VALID=0
 nft list set inet fw4 "$TARGET_NFTSET_4" >/dev/null 2>&1 || VALID=0
+
 if [ "$DOMAIN_COUNT" -gt 0 ]; then
     grep -q "$TARGET_NFTSET_4" /var/run/pbr.dnsmasq 2>/dev/null || VALID=0
+fi
+
+if [ "$NETWORK_COUNT" -gt 0 ]; then
+    [ "$(uci -q get pbr.$NETWORK_POLICY.interface 2>/dev/null || true)" = "$TARGET_INTERFACE" ] || VALID=0
+    [ "$(uci -q get pbr.$NETWORK_POLICY.dest_addr 2>/dev/null || true)" = "$NETWORK_DEST_ADDR" ] || VALID=0
 fi
 
 if [ "$VALID" -eq 1 ]; then
@@ -208,19 +269,5 @@ if [ "$VALID" -eq 1 ]; then
 fi
 
 log 'ERROR: PBR validation failed; rolling back'
-
-if [ "$DOMAIN_HAD_OLD" -eq 1 ]; then
-    cp -f "$DOMAIN_OLD" "$DOMAIN_DEST"
-else
-    rm -f "$DOMAIN_DEST"
-fi
-if [ "$NETWORK_HAD_OLD" -eq 1 ]; then
-    cp -f "$NETWORK_OLD" "$NETWORK_DEST"
-else
-    rm -f "$NETWORK_DEST"
-fi
-
-# Clear elements introduced by the failed configuration before restoring PBR.
-nft flush set inet fw4 "$TARGET_NFTSET_4" >/dev/null 2>&1 || true
-(/etc/init.d/pbr reload >/dev/null 2>&1 || true)
+restore_state
 exit 1
