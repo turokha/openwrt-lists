@@ -241,7 +241,7 @@ chmod 0644 "$DOMAIN_DEST.new" "$NETWORK_DEST.new"
 mv -f "$DOMAIN_DEST.new" "$DOMAIN_DEST"
 mv -f "$NETWORK_DEST.new" "$NETWORK_DEST"
 
-uci -q delete pbr.$NETWORK_TEST_POLICY
+uci -q delete pbr.$NETWORK_TEST_POLICY || true
 
 if [ "$NETWORK_COUNT" -gt 0 ]; then
     uci set pbr.$NETWORK_POLICY='policy'
@@ -250,7 +250,7 @@ if [ "$NETWORK_COUNT" -gt 0 ]; then
     uci set pbr.$NETWORK_POLICY.dest_addr="$NETWORK_DEST_ADDR"
     uci set pbr.$NETWORK_POLICY.enabled='1'
 else
-    uci -q delete pbr.$NETWORK_POLICY
+    uci -q delete pbr.$NETWORK_POLICY || true
 fi
 
 uci commit pbr
