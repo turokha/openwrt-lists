@@ -173,6 +173,25 @@ chmod 0644 "$DOMAIN_DEST.new" "$NETWORK_DEST.new"
 mv -f "$DOMAIN_DEST.new" "$DOMAIN_DEST"
 mv -f "$NETWORK_DEST.new" "$NETWORK_DEST"
 
+# Remove stale IPs learned from domains that are no longer present.
+# PBR reload may preserve the existing user nft set on some installations.
+if nft list set inet fw4 "$TARGET_NFTSET_4" >/dev/null 2>&1; then
+    nft flush set inet fw4 "$TARGET_NFTSET_4" >/dev/null 2>&1 || {
+        log 'ERROR: cannot flush AWG user nft set; restoring previous lists'
+        if [ "$DOMAIN_HAD_OLD" -eq 1 ]; then
+            cp -f "$DOMAIN_OLD" "$DOMAIN_DEST"
+        else
+            rm -f "$DOMAIN_DEST"
+        fi
+        if [ "$NETWORK_HAD_OLD" -eq 1 ]; then
+            cp -f "$NETWORK_OLD" "$NETWORK_DEST"
+        else
+            rm -f "$NETWORK_DEST"
+        fi
+        exit 1
+    }
+fi
+
 (/etc/init.d/pbr reload >"$PBR_LOG" 2>&1 || true)
 sleep 2
 
@@ -201,5 +220,7 @@ else
     rm -f "$NETWORK_DEST"
 fi
 
+# Clear elements introduced by the failed configuration before restoring PBR.
+nft flush set inet fw4 "$TARGET_NFTSET_4" >/dev/null 2>&1 || true
 (/etc/init.d/pbr reload >/dev/null 2>&1 || true)
 exit 1
