@@ -9,7 +9,8 @@ The repository is the source of truth. The router downloads the lists, validates
 - `vpn-domains.txt` — domains routed through `awg0`.
 - `vpn-networks.txt` — IPv4 addresses/CIDR networks routed through `awg0`.
 - `scripts/sync-vpn-lists.sh` — safe synchronizer for OpenWrt.
-- `scripts/pbr.user.openwrt-lists` — PBR include that feeds domains to dnsmasq/nftset and networks directly to the PBR nft set.
+- `scripts/pbr.user.openwrt-lists` — PBR include that feeds domains to dnsmasq/nftset.
+- IPv4/CIDR entries from `vpn-networks.txt` are synchronized into the native PBR policy `pbr.openwrt_lists_networks`.
 
 ## List format
 
@@ -58,7 +59,8 @@ The synchronizer:
 5. writes candidate files first;
 6. atomically replaces the active files;
 7. reloads PBR;
-8. checks that PBR is running and the `awg0` nft set exists;
-9. rolls back to the previous active files if validation after reload fails.
+8. manages IPv4/CIDR routes through a native PBR policy rather than the custom include;
+9. checks that PBR is running and the `awg0` domain nft set exists;
+10. rolls back both the active list files and `/etc/config/pbr` if validation after reload fails.
 
 Use `DRY_RUN=1` to validate without changing PBR.
