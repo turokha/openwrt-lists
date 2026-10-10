@@ -1,2 +1,4 @@
-# IPv4 routes are temporarily disabled while diagnosing the PBR failure.
-# Approved Telegram ranges remain in Git history and will be restored after the isolated test.
+# Staged native-PBR network test.
+# Once this passes through sync-vpn-lists.sh, the remaining approved Telegram
+# ranges will be restored.
+91.108.56.0/22
