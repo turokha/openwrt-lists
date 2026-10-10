@@ -1,0 +1,3 @@
+# Domains routed through awg0.
+# Add one domain per line.
+# Subdomains are handled by dnsmasq; wildcard entries are not required.
