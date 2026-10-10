@@ -61,12 +61,14 @@ restore_state() {
 
 mkdir -p "$DIR"
 
-fetch "$BASE_URL/vpn-domains.txt" "$DOMAIN_RAW" || {
+CACHE_BUST="$(date +%s)"
+
+fetch "$BASE_URL/vpn-domains.txt?cb=$CACHE_BUST" "$DOMAIN_RAW" || {
     log 'ERROR: cannot download vpn-domains.txt; nothing changed'
     exit 1
 }
 
-fetch "$BASE_URL/vpn-networks.txt" "$NETWORK_RAW" || {
+fetch "$BASE_URL/vpn-networks.txt?cb=$CACHE_BUST" "$NETWORK_RAW" || {
     log 'ERROR: cannot download vpn-networks.txt; nothing changed'
     exit 1
 }
