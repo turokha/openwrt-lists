@@ -3,7 +3,8 @@ set -eu
 
 REPO='turokha/openwrt-lists'
 BRANCH='main'
-BASE_URL="https://raw.githubusercontent.com/$REPO/$BRANCH"
+API_URL="https://api.github.com/repos/$REPO"
+RAW_BASE='https://raw.githubusercontent.com'
 DIR='/etc/pbr'
 DOMAIN_DEST="$DIR/vpn-domains.txt"
 NETWORK_DEST="$DIR/vpn-networks.txt"
@@ -21,10 +22,11 @@ NETWORK_NEW="$(mktemp /tmp/openwrt-lists-networks.new.XXXXXX)"
 DOMAIN_OLD="$(mktemp /tmp/openwrt-lists-domains.old.XXXXXX)"
 NETWORK_OLD="$(mktemp /tmp/openwrt-lists-networks.old.XXXXXX)"
 PBR_OLD="$(mktemp /tmp/openwrt-lists-pbr.old.XXXXXX)"
+HEAD_JSON="$(mktemp /tmp/openwrt-lists-head.XXXXXX)"
 
 cleanup() {
     rm -f "$DOMAIN_RAW" "$NETWORK_RAW" "$DOMAIN_NEW" "$NETWORK_NEW" \
-        "$DOMAIN_OLD" "$NETWORK_OLD" "$PBR_OLD"
+        "$DOMAIN_OLD" "$NETWORK_OLD" "$PBR_OLD" "$HEAD_JSON"
 }
 trap cleanup EXIT INT TERM
 
@@ -62,13 +64,31 @@ restore_state() {
 mkdir -p "$DIR"
 
 CACHE_BUST="$(date +%s)"
+fetch "$API_URL/git/ref/heads/$BRANCH?cb=$CACHE_BUST" "$HEAD_JSON" || {
+    log 'ERROR: cannot resolve repository HEAD; nothing changed'
+    exit 1
+}
 
-fetch "$BASE_URL/vpn-domains.txt?cb=$CACHE_BUST" "$DOMAIN_RAW" || {
+HEAD_SHA="$(sed -n 's/.*"sha":[[:space:]]*"\([0-9a-f][0-9a-f]*\)".*/\1/p' "$HEAD_JSON" | head -n 1)"
+rm -f "$HEAD_JSON"
+
+case "$HEAD_SHA" in
+   ????????????????????????????????????????)
+        ;;
+    *)
+        log 'ERROR: invalid repository HEAD SHA; nothing changed'
+        exit 1
+        ;;
+esac
+
+BASE_URL="$RAW_BASE/$REPO/$HEAD_SHA"
+
+fetch "$BASE_URL/vpn-domains.txt" "$DOMAIN_RAW" || {
     log 'ERROR: cannot download vpn-domains.txt; nothing changed'
     exit 1
 }
 
-fetch "$BASE_URL/vpn-networks.txt?cb=$CACHE_BUST" "$NETWORK_RAW" || {
+fetch "$BASE_URL/vpn-networks.txt" "$NETWORK_RAW" || {
     log 'ERROR: cannot download vpn-networks.txt; nothing changed'
     exit 1
 }
