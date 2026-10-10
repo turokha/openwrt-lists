@@ -1,4 +1,13 @@
-# Staged native-PBR network test.
-# Once this passes through sync-vpn-lists.sh, the remaining approved Telegram
-# ranges will be restored.
+# IPv4 addresses and CIDR networks routed through awg0.
+# One entry per line. Comments and blank lines are allowed.
+
+# Telegram official IPv4 ranges
 91.108.56.0/22
+91.108.4.0/22
+91.108.8.0/22
+91.108.16.0/22
+91.108.12.0/22
+149.154.160.0/20
+91.105.192.0/23
+91.108.20.0/22
+185.76.151.0/24
