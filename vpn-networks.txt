@@ -1,0 +1,4 @@
+# IPv4 addresses and CIDR networks routed through awg0.
+# Add one entry per line.
+# Plain IPv4 addresses are normalized to /32.
+# Networks wider than /12 are rejected by the synchronizer.
